@@ -23,5 +23,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Spigot-1.8.8-Core
-          # 这里修改为正确的实际文件名
           path: spigot-1.8.8.jar
