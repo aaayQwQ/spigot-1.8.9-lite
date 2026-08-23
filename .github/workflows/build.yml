@@ -18,24 +18,46 @@ jobs:
     - name: Install tools
       run: |
         sudo apt update
-        sudo apt install -y git maven wget
+        sudo apt install -y git maven
 
-    - name: Download BuildTools
+    - name: Clone Spigot sources
       run: |
-        wget -O BuildTools.jar https://hub.spigotmc.org/jenkins/job/BuildTools/8/artifact/target/BuildTools.jar
+        git clone https://hub.spigotmc.org/stash/scm/spigot/builddata.git BuildData
+        git clone https://hub.spigotmc.org/stash/scm/spigot/bukkit.git Bukkit
+        git clone https://hub.spigotmc.org/stash/scm/spigot/craftbukkit.git CraftBukkit
+        git clone https://hub.spigotmc.org/stash/scm/spigot/spigot.git Spigot
 
-    - name: Prepare Jacobe
+    - name: Checkout 1.8.9 commits
       run: |
-        mkdir -p ~/.buildtools
-        mkdir -p ~/.buildtools/jacobe
-        touch ~/.buildtools/jacobe/jacobe.jar
+        cd Bukkit
+        git checkout a176036de14dbd873fcfed8f3111723cdb34e12c
+
+        cd ../CraftBukkit
+        git checkout efaae75af2758baf9cc24ecbf54eb13fee1f06f7
+
+        cd ../Spigot
+        git checkout 8db49a2b72ef138a615856934957da2978f72f08
+
+    - name: Apply patches
+      run: |
+        cd CraftBukkit
+        ./applyPatches.sh
+
+        cd ../Spigot
+        ./applyPatches.sh
+
+    - name: Build CraftBukkit
+      run: |
+        cd CraftBukkit
+        mvn clean package install -DskipTests
 
     - name: Build Spigot
       run: |
-        java -jar BuildTools.jar --rev 1.8.9
+        cd Spigot
+        mvn clean package install -DskipTests
 
     - name: Upload
       uses: actions/upload-artifact@v4
       with:
         name: spigot-1.8.9-lite
-        path: spigot-1.8.9.jar
+        path: Spigot/target/spigot-*.jar
