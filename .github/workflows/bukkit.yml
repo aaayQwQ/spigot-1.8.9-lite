@@ -1,0 +1,26 @@
+# 完整 bukkit.yml 替换代码
+settings:
+  allow-end: false
+  warn-on-overload: true
+  permissions-file: permissions.yml
+  update-folder: update
+  ping-packet-limit: 100
+  use-exact-login-location: false
+  plugin-profiling: false
+  connection-throttle: 4000
+  query-plugins: true
+  deprecated-verbose: default
+  shutdown-message: Server closed
+spawn-limits:
+  monsters: 0
+  animals: 0
+  water-animals: 0
+  ambient: 0
+chunk-gc:
+  period-in-ticks: 400
+  load-threshold: 300
+ticks-per:
+  animal-spawns: 400
+  monster-spawns: 400
+  autosave: 0 # 关闭自动保存（如果是大厅服且地图不改变，关闭可极大优化性能）
+aliases: now-in-commands.yml
