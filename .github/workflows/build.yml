@@ -23,20 +23,15 @@ jobs:
         sudo apt update
         sudo apt install -y git maven
 
-    - name: Download BuildTools
+    - name: Download BuildTools 164
       run: |
-        wget https://hub.spigotmc.org/jenkins/job/BuildTools/lastSuccessfulBuild/artifact/target/BuildTools.jar
-
-    - name: Prepare Jacobe
-      run: |
-        mkdir -p ~/.m2/repository/org/spigotmc
-        touch jacobe.linux.tar.gz
+        wget https://hub.spigotmc.org/jenkins/job/BuildTools/164/artifact/target/BuildTools.jar
 
     - name: Build Spigot 1.8.9
       run: |
-        java -jar BuildTools.jar --rev 1.8.9 --disable-java-check
+        java -jar BuildTools.jar --rev 1.8.9
 
-    - name: Upload Spigot Jar
+    - name: Upload Spigot
       uses: actions/upload-artifact@v4
       with:
         name: spigot-1.8.9-lite
