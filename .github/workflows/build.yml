@@ -25,11 +25,16 @@ jobs:
 
     - name: Download BuildTools
       run: |
-        wget https://hub.spigotmc.org/jenkins/job/BuildTools/8/artifact/target/BuildTools.jar
+        wget https://hub.spigotmc.org/jenkins/job/BuildTools/lastSuccessfulBuild/artifact/target/BuildTools.jar
+
+    - name: Prepare Jacobe
+      run: |
+        mkdir -p ~/.m2/repository/org/spigotmc
+        touch jacobe.linux.tar.gz
 
     - name: Build Spigot 1.8.9
       run: |
-        java -jar BuildTools.jar --rev 1.8.9
+        java -jar BuildTools.jar --rev 1.8.9 --disable-java-check
 
     - name: Upload Spigot Jar
       uses: actions/upload-artifact@v4
