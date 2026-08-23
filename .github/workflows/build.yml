@@ -1,38 +1,25 @@
-name: Build Spigot 1.8.9 Lite
+name: Test BuildTools
 
 on:
   workflow_dispatch:
 
 jobs:
-  build:
+  test:
     runs-on: ubuntu-22.04
 
     steps:
 
-    - name: Setup Java 8
+    - name: Java 8
       uses: actions/setup-java@v5
       with:
         java-version: '8'
         distribution: 'temurin'
 
-    - name: Install tools
+    - name: Download
       run: |
-        sudo apt update
-        sudo apt install -y git maven
+        wget -O BuildTools.jar https://hub.spigotmc.org/jenkins/job/BuildTools/8/artifact/target/BuildTools.jar
+        ls -lh BuildTools.jar
 
-    - name: Clone BuildTools
+    - name: Run
       run: |
-        git clone https://hub.spigotmc.org/stash/scm/spigot/buildtools.git
-        cd buildtools
-        git checkout e9b4728
-
-    - name: Build Spigot 1.8.9
-      run: |
-        cd buildtools
         java -jar BuildTools.jar --rev 1.8.9
-
-    - name: Upload Spigot
-      uses: actions/upload-artifact@v4
-      with:
-        name: spigot-1.8.9-lite
-        path: buildtools/spigot-1.8.9.jar
