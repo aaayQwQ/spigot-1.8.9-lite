@@ -20,14 +20,14 @@ jobs:
         sudo apt update
         sudo apt install -y git maven
 
-    - name: Clone Spigot sources
+    - name: Clone sources
       run: |
         git clone https://hub.spigotmc.org/stash/scm/spigot/builddata.git BuildData
         git clone https://hub.spigotmc.org/stash/scm/spigot/bukkit.git Bukkit
         git clone https://hub.spigotmc.org/stash/scm/spigot/craftbukkit.git CraftBukkit
         git clone https://hub.spigotmc.org/stash/scm/spigot/spigot.git Spigot
 
-    - name: Checkout 1.8.9 commits
+    - name: Checkout commits
       run: |
         cd Bukkit
         git checkout a176036de14dbd873fcfed8f3111723cdb34e12c
@@ -38,13 +38,15 @@ jobs:
         cd ../Spigot
         git checkout 8db49a2b72ef138a615856934957da2978f72f08
 
-    - name: Apply patches
+    - name: Apply CraftBukkit patches
       run: |
         cd CraftBukkit
-        ./applyPatches.sh
+        ./applyPatches.sh ../BuildData/patches/craftbukkit
 
-        cd ../Spigot
-        ./applyPatches.sh
+    - name: Apply Spigot patches
+      run: |
+        cd Spigot
+        ./applyPatches.sh ../BuildData/patches/spigot
 
     - name: Build CraftBukkit
       run: |
