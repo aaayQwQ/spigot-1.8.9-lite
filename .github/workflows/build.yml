@@ -1,4 +1,4 @@
-name: Build
+name: Build Spigot 1.20.1 (精简版)
 
 on:
   push:
@@ -12,51 +12,115 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: 检出代码
-        uses: actions/checkout@v4
-
-      - name: 设置 JDK 17
+      - name: 设置 JDK 17 (Spigot 1.20.1 需要)
         uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
 
-      # ⭐ 用系统 Gradle（不再依赖 gradlew）
-      - name: 安装 Gradle
+      # ⭐ 下载 BuildTools
+      - name: 下载 BuildTools
         run: |
-          sudo apt-get update
-          sudo apt-get install -y gradle
+          wget -O BuildTools.jar https://hub.spigotmc.org/jenkins/job/BuildTools/lastSuccessfulBuild/artifact/target/BuildTools.jar
 
-      # ⭐ 生成精简配置（关闭所有非必需功能）
-      - name: 生成 gradle.properties
+      # ⭐ 编译 Spigot 核心（这个命令已经会跳过测试，只编译核心）
+      - name: 编译 Spigot 1.20.1
         run: |
-          cat > gradle.properties << 'EOF'
-          org.gradle.jvmargs=-Xmx2G
-          org.gradle.daemon=true
-          minecraft_version=1.20.1
-          loader_version=0.14.24
-          mod_version=1.0.0
-          maven_group=com.your.mod
-          archives_base_name=your-mod-name
-          # 功能开关（全部关闭，只保留最核心）
-          fabric_api_enabled=false
-          cloth_config_enabled=false
-          data_generation_enabled=false
-          EOF
+          java -jar BuildTools.jar --rev 1.20.1
 
-      # ⭐ 编译（跳过测试）
-      - name: 编译 Mod
-        run: |
-          gradle build -x test
-
-      # ⭐ 查看生成的 JAR 体积
+      # ⭐ 查看生成的 JAR 文件
       - name: 查看编译产物
         run: |
-          ls -lh build/libs/
+          ls -lh spigot-*.jar
+          ls -lh craftbukkit-*.jar
 
-      # ⭐ 上传 JAR
-      - name: 上传 JAR
+      # ⭐ 【核心精简】去掉无用文件，只保留基础功能+插件支持
+      - name: 精简 JAR 文件
+        run: |
+          # 找到生成的 spigot jar 文件
+          SPIGOT_JAR=$(ls spigot-*.jar | head -n 1)
+          echo "正在精简: $SPIGOT_JAR"
+
+          # 创建一个临时目录
+          mkdir -p spigot-extracted
+          cd spigot-extracted
+
+          # 解压原始 jar
+          jar -xf ../$SPIGOT_JAR
+
+          # ===== 删除无用文件 =====
+          
+          # 1. 删除测试类（不需要）
+          echo "删除测试类..."
+          find . -name "*Test.class" -type f -delete
+          find . -name "*Tests.class" -type f -delete
+          find . -name "*TestCase.class" -type f -delete
+
+          # 2. 删除开发工具类（不需要）
+          echo "删除开发工具类..."
+          find . -name "*Dev*.class" -type f -delete
+          find . -name "*Debug*.class" -type f -delete
+          find . -path "*/dev/*" -type d -exec rm -rf {} + 2>/dev/null || true
+
+          # 3. 删除签名文件（减少体积）
+          echo "删除签名文件..."
+          rm -rf META-INF/*.SF META-INF/*.DSA META-INF/*.RSA 2>/dev/null || true
+
+          # 4. 删除多余的本地化文件（只保留英文和中文）
+          echo "精简语言文件..."
+          if [ -d "assets" ]; then
+            find assets -name "*.json" -path "*/lang/*" | while read file; do
+              if [[ ! "$file" =~ en_us|zh_cn|zh_tw ]]; then
+                echo "删除: $file"
+                rm -f "$file"
+              fi
+            done
+          fi
+
+          # 5. 删除多余的内置插件示例（如果有的话）
+          echo "删除示例插件..."
+          rm -rf examples/ 2>/dev/null || true
+          rm -rf test/ 2>/dev/null || true
+
+          # 6. 删除日志配置（使用 Spigot 默认的）
+          echo "精简日志配置..."
+          rm -f log4j2*.xml 2>/dev/null || true
+
+          # 7. 删除未使用的默认配置模板
+          echo "精简配置模板..."
+          # 只保留 server.properties 和 bukkit.yml 等必要配置
+          if [ -d "configurations" ]; then
+            rm -rf configurations/*-example.yml 2>/dev/null || true
+          fi
+
+          # 重新打包为精简版 JAR
+          echo "重新打包精简版 JAR..."
+          jar -cf ../spigot-1.20.1-lite.jar .
+
+          cd ..
+          echo "✅ 精简完成！"
+          ls -lh spigot-1.20.1-lite.jar
+
+      # ⭐ 对比原始大小和精简后大小
+      - name: 对比体积
+        run: |
+          echo "=== 原始文件大小 ==="
+          ls -lh spigot-*.jar | grep -v lite
+          echo ""
+          echo "=== 精简后文件大小 ==="
+          ls -lh spigot-*.jar | grep lite
+
+      # ⭐ 上传精简版 JAR（只有基础+插件功能）
+      - name: 上传精简版 JAR
         uses: actions/upload-artifact@v4
         with:
-          name: mod-jar
-          path: build/libs/*.jar
+          name: spigot-1.20.1-lite
+          path: spigot-1.20.1-lite.jar
+
+      # ⭐ 也上传原始版本（备选）
+      - name: 上传原始 JAR（备选）
+        uses: actions/upload-artifact@v4
+        with:
+          name: spigot-1.20.1-original
+          path: spigot-*.jar
+          if-no-files-found: ignore
