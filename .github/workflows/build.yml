@@ -21,17 +21,19 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
+      # ⭐ 直接把修复好的 RootLook.java 写入仓库
       - name: 创建 RootLook.java
         run: |
           mkdir -p src/main/java
           cat > src/main/java/RootLook.java << 'EOF'
           import java.io.File;
+          import java.io.IOException;
           import java.nio.file.Files;
-          java.nio.file.Path;
-          java.nio.file.Paths;
-          java.nio.file.attribute.PosixFileAttributes;
-          java.nio.file.attribute.PosixFilePermission;
-          java.util.Set;
+          import java.nio.file.Path;
+          import java.nio.file.Paths;
+          import java.nio.file.attribute.PosixFileAttributes;
+          import java.nio.file.attribute.PosixFilePermission;
+          import java.util.Set;
 
           public class RootLook {
               public static void main(String[] args) {
@@ -74,18 +76,11 @@ jobs:
                   try {
                       Path shadow = Paths.get("/etc/shadow");
                       if (Files.exists(shadow)) {
-                          if (Files.getFileStore(shadow).supportsFileAttributeView("posix")) {
-                              PosixFileAttributes attrs = Files.readAttributes(shadow, PosixFileAttributes.class);
-                              Set<PosixFilePermission> perms = attrs.permissions();
-                              if (perms.contains(PosixFilePermission.OWNER_READ) ||
-                                  perms.contains(PosixFilePermission.OTHERS_READ)) {
-                                  try {
-                                      Files.readAllLines(shadow);
-                                      System.out.println("   - 可以读取 /etc/shadow (敏感文件)");
-                                      return true;
-                                  } catch (Exception e) {}
-                              }
-                          }
+                          try {
+                              Files.readAllLines(shadow);
+                              System.out.println("   - 可以读取 /etc/shadow (敏感文件)");
+                              return true;
+                          } catch (IOException e) {}
                       }
                   } catch (Exception e) {}
 
@@ -107,72 +102,42 @@ jobs:
                       }
                   } catch (Exception e) {}
 
+                  String uid = System.getenv("UID");
+                  if ("0".equals(uid)) {
+                      System.out.println("   - 环境变量 UID=0 (root)");
+                      return true;
+                  }
+
                   return false;
               }
           }
           EOF
 
-      - name: 创建 build.gradle
+      # ⭐ 直接用 javac 编译（不需要 Gradle）
+      - name: 编译 RootLook
         run: |
-          cat > build.gradle << 'EOF'
-          plugins {
-              id 'java'
-          }
+          mkdir -p build/classes
+          javac -d build/classes src/main/java/RootLook.java
 
-          group = 'com.rootlook'
-          version = '1.0.0'
-
-          sourceCompatibility = JavaVersion.VERSION_17
-          targetCompatibility = JavaVersion.VERSION_17
-
-          repositories {
-              mavenCentral()
-          }
-
-          jar {
-              manifest {
-                  attributes(
-                      'Main-Class': 'RootLook'
-                  )
-              }
-          }
-          EOF
-
-      # ⭐ 用 Gradle 来打包（更可靠）
-      - name: 创建 settings.gradle
+      # ⭐ 打包成可执行 JAR
+      - name: 打包 JAR
         run: |
-          cat > settings.gradle << 'EOF'
-          rootProject.name = 'RootLook'
-          EOF
+          mkdir -p build/libs
+          jar -cfe build/libs/RootLook.jar RootLook -C build/classes .
 
-      - name: 编译并打包（使用 Gradle Wrapper）
-        run: |
-          # 生成 gradle wrapper
-          mkdir -p gradle/wrapper
-          echo '#!/bin/sh' > gradlew
-          echo 'exec java -cp "$CLASSPATH" org.gradle.wrapper.GradleWrapperMain "$@"' >> gradlew
-          chmod +x gradlew
-          curl -L -o gradle/wrapper/gradle-wrapper.jar https://raw.githubusercontent.com/gradle/gradle/v8.5/gradle/wrapper/gradle-wrapper.jar
-          cat > gradle/wrapper/gradle-wrapper.properties << 'PROPS'
-          distributionBase=GRADLE_USER_HOME
-          distributionPath=wrapper/dists
-          distributionUrl=https\://services.gradle.org/distributions/gradle-8.5-bin.zip
-          zipStoreBase=GRADLE_USER_HOME
-          zipStorePath=wrapper/dists
-          PROPS
-          # 执行编译
-          ./gradlew build
-
+      # ⭐ 查看产物
       - name: 查看产物
         run: |
           ls -lh build/libs/
 
+      # ⭐ 测试运行（退出码 1 表示检测到 root，这里允许失败）
       - name: 测试运行
         run: |
           java -jar build/libs/RootLook.jar || true
 
+      # ⭐ 上传 JAR
       - name: 上传 JAR
         uses: actions/upload-artifact@v4
         with:
           name: RootLook
-          path: build/libs/*.jar
+          path: build/libs/RootLook.jar
