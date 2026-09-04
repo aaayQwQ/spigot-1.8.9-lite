@@ -1,4 +1,5 @@
 import java.io.File;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -26,8 +27,6 @@ public class RootLook {
 
         System.out.println();
         System.out.println("========================================");
-
-        // 退出码：0=安全，1=危险
         System.exit(isRoot ? 1 : 0);
     }
 
@@ -39,7 +38,7 @@ public class RootLook {
             return true;
         }
 
-        // 方法2：检查是否可以用 root 权限写 /root 目录
+        // 方法2：检查 /root 目录是否可写
         try {
             File rootDir = new File("/root");
             if (rootDir.exists() && rootDir.canWrite()) {
@@ -54,28 +53,20 @@ public class RootLook {
         try {
             Path shadow = Paths.get("/etc/shadow");
             if (Files.exists(shadow)) {
-                // 检查 POSIX 权限
-                if (Files.getFileStore(shadow).supportsFileAttributeView(PosixFileAttributes.class)) {
-                    PosixFileAttributes attrs = Files.readAttributes(shadow, PosixFileAttributes.class);
-                    Set<PosixFilePermission> perms = attrs.permissions();
-                    // 如果当前用户能读 /etc/shadow，大概率是 root
-                    if (perms.contains(PosixFilePermission.OWNER_READ)) {
-                        // 尝试实际读取
-                        try {
-                            Files.readAllLines(shadow);
-                            System.out.println("   - 可以读取 /etc/shadow (敏感文件)");
-                            return true;
-                        } catch (Exception e) {
-                            // 读不了，说明不是 root
-                        }
-                    }
+                // 尝试直接读取文件内容
+                try {
+                    Files.readAllLines(shadow);
+                    System.out.println("   - 可以读取 /etc/shadow (敏感文件)");
+                    return true;
+                } catch (IOException e) {
+                    // 读取失败，说明没有 root 权限
                 }
             }
         } catch (Exception e) {
             // 忽略
         }
 
-        // 方法4：执行 whoami 命令检查
+        // 方法4：执行 whoami 命令
         try {
             Process process = Runtime.getRuntime().exec(new String[]{"whoami"});
             String result = new String(process.getInputStream().readAllBytes()).trim();
@@ -85,6 +76,25 @@ public class RootLook {
             }
         } catch (Exception e) {
             // 忽略
+        }
+
+        // 方法5：尝试在 /root 目录创建临时文件
+        try {
+            File testFile = new File("/root/.rootlook_test");
+            if (testFile.createNewFile()) {
+                testFile.delete();
+                System.out.println("   - 可以在 /root 目录创建文件");
+                return true;
+            }
+        } catch (Exception e) {
+            // 忽略
+        }
+
+        // 方法6：检查环境变量（有些容器会设置）
+        String uid = System.getenv("UID");
+        if ("0".equals(uid)) {
+            System.out.println("   - 环境变量 UID=0 (root)");
+            return true;
         }
 
         return false;
