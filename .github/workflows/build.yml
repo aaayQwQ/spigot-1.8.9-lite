@@ -21,59 +21,36 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      # ⭐ 直接在 .yaml 里生成 gradle.properties（精简配置）
-      - name: 生成精简版 gradle.properties
+      # ⭐ 用系统 Gradle（不再依赖 gradlew）
+      - name: 安装 Gradle
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gradle
+
+      # ⭐ 生成精简配置（关闭所有非必需功能）
+      - name: 生成 gradle.properties
         run: |
           cat > gradle.properties << 'EOF'
-          # Gradle 配置
           org.gradle.jvmargs=-Xmx2G
           org.gradle.daemon=true
-
-          # Minecraft 版本
           minecraft_version=1.20.1
           loader_version=0.14.24
-
-          # Mod 信息
           mod_version=1.0.0
           maven_group=com.your.mod
           archives_base_name=your-mod-name
-
-          # ⭐ 功能开关（全部关闭，只保留最核心功能）
+          # 功能开关（全部关闭，只保留最核心）
           fabric_api_enabled=false
           cloth_config_enabled=false
           data_generation_enabled=false
-          test_mod_enabled=false
           EOF
 
-      # ⭐ 如果仓库里没有 gradlew，自动生成
-      - name: 生成 gradlew
+      # ⭐ 编译（跳过测试）
+      - name: 编译 Mod
         run: |
-          if [ ! -f "gradlew" ]; then
-            mkdir -p gradle/wrapper
-            cat > gradlew << 'GRADLEW'
-            #!/bin/sh
-            exec java -cp "\$CLASSPATH" org.gradle.wrapper.GradleWrapperMain "\$@"
-            GRADLEW
-            chmod +x gradlew
-            curl -L -o gradle/wrapper/gradle-wrapper.jar https://raw.githubusercontent.com/gradle/gradle/v8.0.0/gradle/wrapper/gradle-wrapper.jar
-            cat > gradle/wrapper/gradle-wrapper.properties << 'PROPS'
-            distributionBase=GRADLE_USER_HOME
-            distributionPath=wrapper/dists
-            distributionUrl=https\://services.gradle.org/distributions/gradle-8.0-bin.zip
-            zipStoreBase=GRADLE_USER_HOME
-            zipStorePath=wrapper/dists
-            PROPS
-          else
-            chmod +x gradlew
-          fi
+          gradle build -x test
 
-      # ⭐ 编译并跳过测试
-      - name: 编译
-        run: |
-          ./gradlew build -x test
-
-      # ⭐ 查看生成的 jar 文件大小
-      - name: 查看 JAR 文件
+      # ⭐ 查看生成的 JAR 体积
+      - name: 查看编译产物
         run: |
           ls -lh build/libs/
 
