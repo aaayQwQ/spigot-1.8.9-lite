@@ -1,0 +1,42 @@
+plugins {
+    id 'java'
+    id 'com.github.johnrengelman.shadow' version '8.1.1'
+}
+
+group = 'com.rootlook'
+version = '1.0.0'
+
+sourceCompatibility = JavaVersion.VERSION_17
+targetCompatibility = JavaVersion.VERSION_17
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    // 无额外依赖，纯 Java 标准库
+}
+
+jar {
+    manifest {
+        attributes(
+            'Main-Class': 'RootLook',
+            'Implementation-Title': 'RootLook',
+            'Implementation-Version': version
+        )
+    }
+}
+
+// 使用 Shadow 插件生成包含所有依赖的胖 JAR（这里不需要，但保留以备后用）
+tasks.named('shadowJar') {
+    manifest {
+        attributes('Main-Class': 'RootLook')
+    }
+}
+
+// 默认 jar 任务生成可执行 JAR
+tasks.named('jar') {
+    manifest {
+        attributes('Main-Class': 'RootLook')
+    }
+}
