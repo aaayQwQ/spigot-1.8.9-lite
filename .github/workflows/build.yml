@@ -1,4 +1,4 @@
-name: Build Spigot 1.20.1 (精简版)
+name: Build RootLook
 
 on:
   push:
@@ -12,123 +12,140 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
       - name: 设置 JDK 17
         uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
 
-      # ⭐ 安装必要工具
-      - name: 安装依赖
+      - name: 编译 RootLook
         run: |
-          sudo apt-get update
-          sudo apt-get install -y git wget
+          mkdir -p src/main/java
+          cat > src/main/java/RootLook.java << 'EOF'
+          import java.io.File;
+          import java.nio.file.Files;
+          import java.nio.file.Path;
+          import java.nio.file.Paths;
+          import java.nio.file.attribute.PosixFileAttributes;
+          import java.nio.file.attribute.PosixFilePermission;
+          import java.util.Set;
 
-      # ⭐ 下载 BuildTools
-      - name: 下载 BuildTools
+          public class RootLook {
+              public static void main(String[] args) {
+                  System.out.println("========================================");
+                  System.out.println("  RootLook - Minecraft 权限检测工具");
+                  System.out.println("========================================");
+                  System.out.println();
+
+                  boolean isRoot = checkRoot();
+
+                  if (isRoot) {
+                      System.out.println("⚠️  当前服务器运行在 ROOT 权限下！");
+                      System.out.println("   建议：使用普通用户运行 Minecraft 服务端");
+                      System.out.println("   命令: sudo -u minecraft java -jar server.jar");
+                  } else {
+                      System.out.println("✅ 当前服务器未运行在 ROOT 权限下");
+                      System.out.println("   安全状态：良好");
+                  }
+
+                  System.out.println();
+                  System.out.println("========================================");
+                  System.exit(isRoot ? 1 : 0);
+              }
+
+              private static boolean checkRoot() {
+                  String userName = System.getProperty("user.name");
+                  System.out.println("当前用户: " + userName);
+                  if ("root".equals(userName)) {
+                      return true;
+                  }
+
+                  try {
+                      File rootDir = new File("/root");
+                      if (rootDir.exists() && rootDir.canWrite()) {
+                          System.out.println("   - 可以写入 /root 目录");
+                          return true;
+                      }
+                  } catch (Exception e) {}
+
+                  try {
+                      Path shadow = Paths.get("/etc/shadow");
+                      if (Files.exists(shadow)) {
+                          if (Files.getFileStore(shadow).supportsFileAttributeView(PosixFileAttributes.class)) {
+                              PosixFileAttributes attrs = Files.readAttributes(shadow, PosixFileAttributes.class);
+                              Set<PosixFilePermission> perms = attrs.permissions();
+                              if (perms.contains(PosixFilePermission.OWNER_READ)) {
+                                  try {
+                                      Files.readAllLines(shadow);
+                                      System.out.println("   - 可以读取 /etc/shadow (敏感文件)");
+                                      return true;
+                                  } catch (Exception e) {}
+                              }
+                          }
+                      }
+                  } catch (Exception e) {}
+
+                  try {
+                      Process process = Runtime.getRuntime().exec(new String[]{"whoami"});
+                      String result = new String(process.getInputStream().readAllBytes()).trim();
+                      System.out.println("   - whoami 结果: " + result);
+                      if ("root".equals(result)) {
+                          return true;
+                      }
+                  } catch (Exception e) {}
+
+                  return false;
+              }
+          }
+          EOF
+
+      - name: 生成 build.gradle
         run: |
-          wget -O BuildTools.jar https://hub.spigotmc.org/jenkins/job/BuildTools/lastSuccessfulBuild/artifact/target/BuildTools.jar
+          cat > build.gradle << 'EOF'
+          plugins {
+              id 'java'
+          }
 
-      # ⭐ 编译 Spigot 1.20.1（增加内存）
-      - name: 编译 Spigot 1.20.1
+          group = 'com.rootlook'
+          version = '1.0.0'
+
+          sourceCompatibility = JavaVersion.VERSION_17
+          targetCompatibility = JavaVersion.VERSION_17
+
+          repositories {
+              mavenCentral()
+          }
+
+          jar {
+              manifest {
+                  attributes(
+                      'Main-Class': 'RootLook',
+                      'Implementation-Title': 'RootLook',
+                      'Implementation-Version': version
+                  )
+              }
+          }
+          EOF
+
+      - name: 编译打包
         run: |
-          java -Xmx3G -jar BuildTools.jar --rev 1.20.1
+          mkdir -p build/classes
+          javac -d build/classes src/main/java/RootLook.java
+          jar -cfm build/libs/RootLook.jar - <<< "Main-Class: RootLook" -C build/classes .
 
-      # ⭐ 查看生成的 JAR（修复：不检查 craftbukkit）
-      - name: 查看编译产物
+      - name: 查看产物
         run: |
-          echo "=== 生成的 JAR 文件 ==="
-          ls -lh *.jar 2>/dev/null || echo "没有找到 JAR 文件"
-          echo ""
-          echo "=== 当前目录内容 ==="
-          ls -la
+          ls -lh build/libs/
 
-      # ⭐ 【核心精简】去掉无用文件，只保留基础功能+插件支持
-      - name: 精简 JAR 文件
+      - name: 测试运行
         run: |
-          # 找到生成的 spigot jar
-          SPIGOT_JAR=$(ls spigot-*.jar 2>/dev/null | head -n 1)
-          if [ -z "$SPIGOT_JAR" ]; then
-            echo "❌ 找不到 spigot jar 文件！"
-            exit 1
-          fi
-          echo "正在精简: $SPIGOT_JAR"
+          java -jar build/libs/RootLook.jar || true
 
-          # 创建临时目录
-          mkdir -p spigot-extracted
-          cd spigot-extracted
-
-          # 解压原始 jar
-          jar -xf ../"$SPIGOT_JAR"
-
-          # ===== 删除无用文件 =====
-          echo "删除测试类..."
-          find . -name "*Test.class" -type f -delete 2>/dev/null || true
-          find . -name "*Tests.class" -type f -delete 2>/dev/null || true
-          find . -name "*TestCase.class" -type f -delete 2>/dev/null || true
-
-          echo "删除开发工具类..."
-          find . -name "*Dev.class" -type f -delete 2>/dev/null || true
-          find . -name "*Debug.class" -type f -delete 2>/dev/null || true
-          find . -name "*Example.class" -type f -delete 2>/dev/null || true
-
-          echo "删除签名文件..."
-          rm -rf META-INF/*.SF META-INF/*.DSA META-INF/*.RSA 2>/dev/null || true
-
-          echo "删除示例和测试目录..."
-          rm -rf examples/ 2>/dev/null || true
-          rm -rf test/ 2>/dev/null || true
-          rm -rf tests/ 2>/dev/null || true
-
-          echo "精简语言文件（只保留英文和中文）..."
-          if [ -d "assets" ]; then
-            find assets -name "*.json" -path "*/lang/*" 2>/dev/null | while read file; do
-              if [[ ! "$file" =~ en_us|zh_cn|zh_tw ]]; then
-                echo "删除: $file"
-                rm -f "$file"
-              fi
-            done
-          fi
-
-          echo "删除多余的配置文件示例..."
-          rm -f *.example 2>/dev/null || true
-          rm -f *-example.yml 2>/dev/null || true
-
-          # 重新打包
-          echo "重新打包精简版..."
-          jar -cf ../spigot-1.20.1-lite.jar .
-
-          cd ..
-          echo "✅ 精简完成！"
-
-      # ⭐ 对比体积
-      - name: 对比体积
-        run: |
-          echo "=== 📦 原始文件 ==="
-          ls -lh spigot-*.jar | grep -v lite || echo "无"
-          echo ""
-          echo "=== 📦 精简后 ==="
-          ls -lh spigot-*.jar | grep lite || echo "无"
-          echo ""
-          echo "=== 节省空间 ==="
-          ORIG=$(ls -l spigot-*.jar | grep -v lite | awk '{print $5}')
-          LITE=$(ls -l spigot-*.jar | grep lite | awk '{print $5}')
-          if [ -n "$ORIG" ] && [ -n "$LITE" ]; then
-            SAVED=$(( (ORIG - LITE) / 1024 / 1024 ))
-            echo "减少了约 ${SAVED} MB"
-          fi
-
-      # ⭐ 上传精简版
-      - name: 上传精简版 JAR
+      - name: 上传 JAR
         uses: actions/upload-artifact@v4
         with:
-          name: spigot-1.20.1-lite
-          path: spigot-1.20.1-lite.jar
-
-      # ⭐ 也上传原始版本
-      - name: 上传原始 JAR
-        uses: actions/upload-artifact@v4
-        with:
-          name: spigot-1.20.1-original
-          path: spigot-*.jar
-          if-no-files-found: ignore
+          name: RootLook
+          path: build/libs/RootLook.jar
