@@ -27,11 +27,11 @@ jobs:
           cat > src/main/java/RootLook.java << 'EOF'
           import java.io.File;
           import java.nio.file.Files;
-          import java.nio.file.Path;
-          import java.nio.file.Paths;
-          import java.nio.file.attribute.PosixFileAttributes;
-          import java.nio.file.attribute.PosixFilePermission;
-          import java.util.Set;
+          java.nio.file.Path;
+          java.nio.file.Paths;
+          java.nio.file.attribute.PosixFileAttributes;
+          java.nio.file.attribute.PosixFilePermission;
+          java.util.Set;
 
           public class RootLook {
               public static void main(String[] args) {
@@ -57,14 +57,12 @@ jobs:
               }
 
               private static boolean checkRoot() {
-                  // 方法1：检查系统属性 user.name
                   String userName = System.getProperty("user.name");
                   System.out.println("当前用户: " + userName);
                   if ("root".equals(userName)) {
                       return true;
                   }
 
-                  // 方法2：检查是否可以用 root 权限写 /root 目录
                   try {
                       File rootDir = new File("/root");
                       if (rootDir.exists() && rootDir.canWrite()) {
@@ -73,11 +71,9 @@ jobs:
                       }
                   } catch (Exception e) {}
 
-                  // 方法3：尝试读取 /etc/shadow（只有 root 可读）
                   try {
                       Path shadow = Paths.get("/etc/shadow");
                       if (Files.exists(shadow)) {
-                          // ⭐ 修复：使用字符串 "posix" 而不是 Class
                           if (Files.getFileStore(shadow).supportsFileAttributeView("posix")) {
                               PosixFileAttributes attrs = Files.readAttributes(shadow, PosixFileAttributes.class);
                               Set<PosixFilePermission> perms = attrs.permissions();
@@ -93,7 +89,6 @@ jobs:
                       }
                   } catch (Exception e) {}
 
-                  // 方法4：执行 whoami 命令检查
                   try {
                       Process process = Runtime.getRuntime().exec(new String[]{"whoami"});
                       String result = new String(process.getInputStream().readAllBytes()).trim();
@@ -103,7 +98,6 @@ jobs:
                       }
                   } catch (Exception e) {}
 
-                  // 方法5：尝试创建 /root/test 文件（只有 root 能创建）
                   try {
                       File testFile = new File("/root/.rootlook_test");
                       if (testFile.createNewFile()) {
@@ -138,19 +132,36 @@ jobs:
           jar {
               manifest {
                   attributes(
-                      'Main-Class': 'RootLook',
-                      'Implementation-Title': 'RootLook',
-                      'Implementation-Version': version
+                      'Main-Class': 'RootLook'
                   )
               }
           }
           EOF
 
-      - name: 编译打包
+      # ⭐ 用 Gradle 来打包（更可靠）
+      - name: 创建 settings.gradle
         run: |
-          mkdir -p build/classes
-          javac -d build/classes src/main/java/RootLook.java
-          jar -cfm build/libs/RootLook.jar - <<< "Main-Class: RootLook" -C build/classes .
+          cat > settings.gradle << 'EOF'
+          rootProject.name = 'RootLook'
+          EOF
+
+      - name: 编译并打包（使用 Gradle Wrapper）
+        run: |
+          # 生成 gradle wrapper
+          mkdir -p gradle/wrapper
+          echo '#!/bin/sh' > gradlew
+          echo 'exec java -cp "$CLASSPATH" org.gradle.wrapper.GradleWrapperMain "$@"' >> gradlew
+          chmod +x gradlew
+          curl -L -o gradle/wrapper/gradle-wrapper.jar https://raw.githubusercontent.com/gradle/gradle/v8.5/gradle/wrapper/gradle-wrapper.jar
+          cat > gradle/wrapper/gradle-wrapper.properties << 'PROPS'
+          distributionBase=GRADLE_USER_HOME
+          distributionPath=wrapper/dists
+          distributionUrl=https\://services.gradle.org/distributions/gradle-8.5-bin.zip
+          zipStoreBase=GRADLE_USER_HOME
+          zipStorePath=wrapper/dists
+          PROPS
+          # 执行编译
+          ./gradlew build
 
       - name: 查看产物
         run: |
@@ -164,4 +175,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: RootLook
-          path: build/libs/RootLook.jar
+          path: build/libs/*.jar
